@@ -68,14 +68,11 @@ vi.mock('@agent-device/platform-apple/app-resolution', async (importOriginal) =>
     resolveIosSimulatorDeepLinkBundleId: vi.fn(async () => undefined),
   };
 });
-vi.mock('../../../platform-runtime-open-target.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../platform-runtime-open-target.ts')>();
-  return { ...actual, resolveAndroidPackageForOpen: vi.fn(async () => undefined) };
-});
 vi.mock('@agent-device/platform-android/mechanics', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-device/platform-android/mechanics')>();
   return {
     ...actual,
+    resolveAndroidPackageForOpen: vi.fn(async () => undefined),
     activateAndroidTestIme: vi.fn(async () => ({ activated: false })),
     restoreAndroidTestIme: vi.fn(async () => ({ restored: false, reason: 'no-record' })),
   };
@@ -113,7 +110,7 @@ import {
   resolveIosApp,
   resolveIosSimulatorDeepLinkBundleId,
 } from '@agent-device/platform-apple/app-resolution';
-import { resolveAndroidPackageForOpen } from '../../../platform-runtime-open-target.ts';
+import { resolveAndroidPackageForOpen } from '@agent-device/platform-android/mechanics';
 import { runCmd } from '@agent-device/host-kit/command';
 import { dispatchApplicationLifecycleEffect } from '../../__tests__/application-lifecycle-runtime-fixture.ts';
 

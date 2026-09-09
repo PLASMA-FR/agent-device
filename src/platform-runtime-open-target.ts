@@ -1,18 +1,26 @@
-import {
-  isDeepLinkTarget,
-  isWebUrl,
-  resolveIosDeviceDeepLinkBundleId,
-} from '@agent-device/contracts/command';
+import { isDeepLinkTarget } from '@agent-device/contracts/command';
 import { parseSessionSurface, type SessionSurface } from '@agent-device/contracts/session';
 import { isMacOs, isApplePlatform, type DeviceInfo } from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
 import { loadAndroidMechanics } from './platform-runtime-android-mechanics.ts';
 
+let appleApplicationsModule:
+  | Promise<typeof import('./platform-runtime-apple-application-tools.ts')>
+  | undefined;
+const loadAppleApplications = () =>
+  (appleApplicationsModule ??= import('./platform-runtime-apple-application-tools.ts'));
+
+let androidApplicationsModule:
+  | Promise<typeof import('./platform-runtime-android-application-tools.ts')>
+  | undefined;
+const loadAndroidApplications = () =>
+  (androidApplicationsModule ??= import('./platform-runtime-android-application-tools.ts'));
+
 const LINUX_SUPPORTED_SURFACES = new Set<SessionSurface>(['app', 'desktop', 'frontmost-app']);
 
 /**
- * Platform-owned surface classification for open. Daemon handlers retain only the public
- * error-response construction and session-policy choice of an existing surface.
+ * Open surface policy. Daemon handlers retain response construction and the choice to reuse
+ * an existing session surface; application tools own device observations.
  */
 export function resolveRequestedOpenSurface(params: {
   device: DeviceInfo;
@@ -99,92 +107,6 @@ export async function validateOpenRelaunchTarget(params: {
   return undefined;
 }
 
-async function resolveIosBundleIdForOpen(
-  device: DeviceInfo,
-  openTarget: string | undefined,
-  currentAppBundleId?: string,
-): Promise<string | undefined> {
-  if (!isApplePlatform(device.platform) || !openTarget) return undefined;
-  if (isDeepLinkTarget(openTarget)) {
-    if (isMacOs(device)) return undefined;
-    if (device.kind === 'device') {
-      return resolveIosDeviceDeepLinkBundleId(currentAppBundleId, openTarget);
-    }
-    if (!isWebUrl(openTarget)) {
-      return (
-        currentAppBundleId ?? (await tryResolveIosSimulatorDeepLinkBundleId(device, openTarget))
-      );
-    }
-    return undefined;
-  }
-  return await tryResolveIosAppBundleId(device, openTarget);
-}
-
-async function tryResolveIosSimulatorDeepLinkBundleId(
-  device: DeviceInfo,
-  openTarget: string,
-): Promise<string | undefined> {
-  try {
-    const { resolveIosSimulatorDeepLinkBundleId } =
-      await import('@agent-device/platform-apple/app-resolution');
-    return await resolveIosSimulatorDeepLinkBundleId(device, openTarget);
-  } catch {
-    return undefined;
-  }
-}
-
-async function tryResolveIosAppBundleId(
-  device: DeviceInfo,
-  openTarget: string,
-): Promise<string | undefined> {
-  try {
-    const { resolveIosApp } = await import('@agent-device/platform-apple/app-resolution');
-    return await resolveIosApp(device, openTarget);
-  } catch {
-    return undefined;
-  }
-}
-
-export async function resolveAndroidPackageForOpen(
-  device: DeviceInfo,
-  openTarget: string | undefined,
-): Promise<string | undefined> {
-  if (device.platform !== 'android' || !openTarget || isDeepLinkTarget(openTarget))
-    return undefined;
-  try {
-    const { resolveAndroidApp } = await loadAndroidMechanics();
-    const resolved = await resolveAndroidApp(device, openTarget);
-    return resolved.type === 'package' ? resolved.value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export async function inferAndroidPackageAfterOpen(
-  device: DeviceInfo,
-  openTarget: string | undefined,
-  currentAppBundleId: string | undefined,
-): Promise<string | undefined> {
-  if (currentAppBundleId) return currentAppBundleId;
-  if (device.platform !== 'android' || !openTarget || !isDeepLinkTarget(openTarget)) {
-    return currentAppBundleId;
-  }
-  try {
-    const { getAndroidAppState } = await loadAndroidMechanics();
-    const foreground = await getAndroidAppState(device);
-    return foreground.package?.trim() || currentAppBundleId;
-  } catch {
-    return currentAppBundleId;
-  }
-}
-
-function shouldPreserveAndroidPackageContext(
-  device: DeviceInfo,
-  openTarget: string | undefined,
-): boolean {
-  return device.platform === 'android' && Boolean(openTarget && isDeepLinkTarget(openTarget));
-}
-
 /** Harmony's local target contract accepts an explicit dotted package without an adb lookup. */
 function bundleIdFromOpenTarget(openTarget: string | undefined): string | undefined {
   const trimmed = openTarget?.trim();
@@ -196,17 +118,18 @@ export async function resolveSessionAppBundleIdForTarget(
   device: DeviceInfo,
   openTarget: string | undefined,
   currentAppBundleId: string | undefined,
-  resolveAndroidPackageForOpenFn: (
-    device: DeviceInfo,
-    openTarget: string | undefined,
-  ) => Promise<string | undefined>,
 ): Promise<string | undefined> {
   if (device.platform === 'harmonyos') {
     return bundleIdFromOpenTarget(openTarget) ?? currentAppBundleId;
   }
-  return (
-    (await resolveIosBundleIdForOpen(device, openTarget, currentAppBundleId)) ??
-    (await resolveAndroidPackageForOpenFn(device, openTarget)) ??
-    (shouldPreserveAndroidPackageContext(device, openTarget) ? currentAppBundleId : undefined)
-  );
+  const input = { target: openTarget, currentAppBundleId, surface: 'app' as const };
+  if (isApplePlatform(device.platform)) {
+    const { createAppleApplicationTools } = await loadAppleApplications();
+    return (await createAppleApplicationTools().resolveOpenTarget(device, input)).appBundleId;
+  }
+  if (device.platform === 'android') {
+    const { createAndroidApplicationTools } = await loadAndroidApplications();
+    return (await createAndroidApplicationTools().resolveOpenTarget(device, input)).appBundleId;
+  }
+  return undefined;
 }

@@ -1,3 +1,4 @@
+import { isDeepLinkTarget } from '@agent-device/contracts/command';
 import type {
   AndroidApplicationTools,
   OpenTargetResolution,
@@ -13,9 +14,6 @@ import { loadAndroidMechanics } from './platform-runtime-android-mechanics.ts';
  * See the same loaders in `platform-runtime-apple-application-tools.ts` for why a port never
  * opens its own `import(...)` (#2314).
  */
-let openTargetModule: Promise<typeof import('./platform-runtime-open-target.ts')> | undefined;
-const loadOpenTarget = () => (openTargetModule ??= import('./platform-runtime-open-target.ts'));
-
 let runtimeHintsModule: Promise<typeof import('./platform-runtime-runtime-hints.ts')> | undefined;
 const loadRuntimeHints = () =>
   (runtimeHintsModule ??= import('./platform-runtime-runtime-hints.ts'));
@@ -25,7 +23,7 @@ export function createAndroidApplicationTools(): AndroidApplicationTools {
   return Object.freeze({
     resolveOpenTarget: async (device, input) => await resolveAndroidOpenTarget(device, input),
     inferOpenedAppBundleId: async (device, target, currentAppBundleId) => {
-      const { inferAndroidPackageAfterOpen } = await loadOpenTarget();
+      const { inferAndroidPackageAfterOpen } = await loadAndroidMechanics();
       return await inferAndroidPackageAfterOpen(device, target, currentAppBundleId);
     },
     resetFramePerfStats: async (device, appBundleId) => {
@@ -96,15 +94,11 @@ async function resolveAndroidOpenTarget(
   device: DeviceInfo,
   input: OpenTargetResolutionInput,
 ): Promise<OpenTargetResolution> {
-  const { resolveAndroidPackageForOpen, resolveSessionAppBundleIdForTarget } =
-    await loadOpenTarget();
+  const { resolveAndroidPackageForOpen } = await loadAndroidMechanics();
   return {
-    appBundleId: await resolveSessionAppBundleIdForTarget(
-      device,
-      input.target,
-      input.currentAppBundleId,
-      resolveAndroidPackageForOpen,
-    ),
+    appBundleId:
+      (await resolveAndroidPackageForOpen(device, input.target)) ??
+      (input.target && isDeepLinkTarget(input.target) ? input.currentAppBundleId : undefined),
     appName: input.target,
   };
 }

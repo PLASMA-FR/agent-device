@@ -4,6 +4,7 @@ import { withFakeAdb } from './test-utils/fake-adb.ts';
 import {
   createAndroidWindowDumpReader,
   getAndroidAppState,
+  inferAndroidPackageAfterOpen,
   getAndroidBlockingDialogObservation,
   resetAndroidWindowDumpFocusMemoForTests,
   type AndroidBlockingDialogObservation,
@@ -39,6 +40,63 @@ function dialogPackage(observation: AndroidBlockingDialogObservation): string | 
 beforeEach(() => {
   resetAndroidWindowDumpFocusMemoForTests();
 });
+
+test('inferAndroidPackageAfterOpen reads foreground package for Android URL opens', async () => {
+  await withFakeAdb(
+    () => 'mCurrentFocus=Window{a1b2c3 u0 host.exp.exponent/.experience.ExperienceActivity}',
+    async ({ calls, device }) => {
+      assert.equal(
+        await inferAndroidPackageAfterOpen(device, 'exp://127.0.0.1:8082', undefined),
+        'host.exp.exponent',
+      );
+      assert.deepEqual(
+        calls.map((args) => args.join(' ')),
+        [dumpsysWindowWindows],
+      );
+    },
+  );
+});
+
+test('post-open inference preserves an existing package without observing another foreground app', async () => {
+  await withFakeAdb(
+    () => NORMAL_FOCUS_DUMP,
+    async ({ calls, device }) => {
+      assert.equal(
+        await inferAndroidPackageAfterOpen(device, 'myapp://login', 'com.example.current'),
+        'com.example.current',
+      );
+      assert.deepEqual(calls, []);
+    },
+  );
+});
+
+test.each([undefined, 'com.example.app'])(
+  'post-open inference does not probe for a non-URL target: %s',
+  async (target) => {
+    await withFakeAdb(
+      () => NORMAL_FOCUS_DUMP,
+      async ({ calls, device }) => {
+        assert.equal(await inferAndroidPackageAfterOpen(device, target, undefined), undefined);
+        assert.deepEqual(calls, []);
+      },
+    );
+  },
+);
+
+test.each(['', new Error('device unavailable')])(
+  'post-open inference leaves absent or failed foreground evidence inconclusive: %s',
+  async (response) => {
+    await withFakeAdb(
+      () => response,
+      async ({ device }) => {
+        assert.equal(
+          await inferAndroidPackageAfterOpen(device, 'myapp://login', undefined),
+          undefined,
+        );
+      },
+    );
+  },
+);
 
 test('a focused-window dump answers the blocking-dialog question without a second dumpsys variant', async () => {
   const { calls, observation } = await withFakeAdb(

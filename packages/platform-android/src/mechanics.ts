@@ -54,6 +54,7 @@ export {
   androidAppsDiscoveryHint,
   inferAndroidAppName,
   resolveAndroidApp,
+  resolveAndroidPackageForOpen,
   withAndroidAppResolutionCacheInvalidated,
   type AndroidAppResolution,
 } from './app-deployment-resolution.ts';
@@ -327,6 +328,7 @@ export {
 export {
   createAndroidWindowDumpReader,
   getAndroidAppState,
+  inferAndroidPackageAfterOpen,
   getAndroidBlockingDialogObservation,
   resetAndroidWindowDumpFocusMemoForTests,
   type AndroidBlockingDialogObservation,

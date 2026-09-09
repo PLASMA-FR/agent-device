@@ -1,3 +1,4 @@
+import { isDeepLinkTarget } from '@agent-device/contracts/command';
 import { AppError } from '@agent-device/kernel/errors';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import {
@@ -76,6 +77,20 @@ export async function resolveAndroidApp(
   throw new AppError('APP_NOT_INSTALLED', `No package found matching "${app}"`, {
     hint: androidAppsDiscoveryHint,
   });
+}
+
+export async function resolveAndroidPackageForOpen(
+  device: DeviceInfo,
+  openTarget: string | undefined,
+): Promise<string | undefined> {
+  if (device.platform !== 'android' || !openTarget || isDeepLinkTarget(openTarget))
+    return undefined;
+  try {
+    const resolved = await resolveAndroidApp(device, openTarget);
+    return resolved.type === 'package' ? resolved.value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Produces a readable display label when an Android provider reports only a package id. */

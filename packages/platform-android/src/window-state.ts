@@ -1,3 +1,4 @@
+import { isDeepLinkTarget } from '@agent-device/contracts/command';
 import type { AppStateRuntimeResult } from '@agent-device/contracts/app-state-runtime';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { runAndroidAdb } from './adb.ts';
@@ -133,6 +134,23 @@ export async function getAndroidAppState(
     if (state) return state;
   }
   return {};
+}
+
+export async function inferAndroidPackageAfterOpen(
+  device: DeviceInfo,
+  openTarget: string | undefined,
+  currentAppBundleId: string | undefined,
+): Promise<string | undefined> {
+  if (currentAppBundleId) return currentAppBundleId;
+  if (device.platform !== 'android' || !openTarget || !isDeepLinkTarget(openTarget)) {
+    return currentAppBundleId;
+  }
+  try {
+    const foreground = await getAndroidAppState(device);
+    return foreground.package?.trim() || currentAppBundleId;
+  } catch {
+    return currentAppBundleId;
+  }
 }
 
 /**

@@ -1,3 +1,8 @@
+import {
+  isDeepLinkTarget,
+  isWebUrl,
+  resolveIosDeviceDeepLinkBundleId,
+} from '@agent-device/contracts/command';
 import type {
   AppleApplicationTools,
   AppleRunnerSessionPrewarmOptions,
@@ -6,7 +11,12 @@ import type {
   OpenTargetResolutionInput,
   PrepareAppleRunnerInput,
 } from '@agent-device/contracts/application-lifecycle-runtime';
-import { isIosFamily, isMacOs, type DeviceInfo } from '@agent-device/kernel/device';
+import {
+  isIosFamily,
+  isMacOs,
+  isApplePlatform,
+  type DeviceInfo,
+} from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
 
 /**
@@ -30,9 +40,6 @@ const loadRunnerOperations = () =>
 let runtimeHintsModule: Promise<typeof import('./platform-runtime-runtime-hints.ts')> | undefined;
 const loadRuntimeHints = () =>
   (runtimeHintsModule ??= import('./platform-runtime-runtime-hints.ts'));
-
-let openTargetModule: Promise<typeof import('./platform-runtime-open-target.ts')> | undefined;
-const loadOpenTarget = () => (openTargetModule ??= import('./platform-runtime-open-target.ts'));
 
 let appResolutionModule:
   | Promise<typeof import('@agent-device/platform-apple/app-resolution')>
@@ -141,18 +148,57 @@ async function resolveAppleOpenTarget(
     );
   }
   const macOsSurface = await resolveMacOsSurface(device, input.surface);
-  const { resolveSessionAppBundleIdForTarget } = await loadOpenTarget();
   return {
     appBundleId:
       macOsSurface.appBundleId ??
-      (await resolveSessionAppBundleIdForTarget(
-        device,
-        input.target,
-        input.currentAppBundleId,
-        async () => undefined,
-      )),
+      (await resolveIosBundleIdForOpen(device, input.target, input.currentAppBundleId)),
     appName: macOsSurface.appName ?? input.target,
   };
+}
+
+async function resolveIosBundleIdForOpen(
+  device: DeviceInfo,
+  openTarget: string | undefined,
+  currentAppBundleId?: string,
+): Promise<string | undefined> {
+  if (!isApplePlatform(device.platform) || !openTarget) return undefined;
+  if (isDeepLinkTarget(openTarget)) {
+    if (isMacOs(device)) return undefined;
+    if (device.kind === 'device') {
+      return resolveIosDeviceDeepLinkBundleId(currentAppBundleId, openTarget);
+    }
+    if (!isWebUrl(openTarget)) {
+      return (
+        currentAppBundleId ?? (await tryResolveIosSimulatorDeepLinkBundleId(device, openTarget))
+      );
+    }
+    return undefined;
+  }
+  return await tryResolveIosAppBundleId(device, openTarget);
+}
+
+async function tryResolveIosSimulatorDeepLinkBundleId(
+  device: DeviceInfo,
+  openTarget: string,
+): Promise<string | undefined> {
+  try {
+    const { resolveIosSimulatorDeepLinkBundleId } = await loadAppResolution();
+    return await resolveIosSimulatorDeepLinkBundleId(device, openTarget);
+  } catch {
+    return undefined;
+  }
+}
+
+async function tryResolveIosAppBundleId(
+  device: DeviceInfo,
+  openTarget: string,
+): Promise<string | undefined> {
+  try {
+    const { resolveIosApp } = await loadAppResolution();
+    return await resolveIosApp(device, openTarget);
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveAppleForegroundTarget(
