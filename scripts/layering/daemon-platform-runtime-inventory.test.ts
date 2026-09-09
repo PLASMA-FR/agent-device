@@ -30,6 +30,22 @@ test('R76 accepts a classified edge with the exact recorded symbols', () => {
   assert.deepEqual(edgeViolations(sources, 'src/daemon/device-ready.ts'), []);
 });
 
+test('R76 rejects Android package mechanics alongside the selector target policy', () => {
+  const file = 'src/daemon/handlers/session-selector-dispatch.ts';
+  const sources = {
+    'src/platform-runtime-open-target.ts':
+      'export function resolveAndroidPackageForOpen() {}\n' +
+      'export function resolveSessionAppBundleIdForTarget() {}\n',
+    [file]:
+      "import { resolveAndroidPackageForOpen, resolveSessionAppBundleIdForTarget } from '../../platform-runtime-open-target.ts';\n" +
+      'void [resolveAndroidPackageForOpen, resolveSessionAppBundleIdForTarget];\n',
+  };
+  const found = edgeViolations(sources, file);
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.rule, DAEMON_PLATFORM_RUNTIME_RULE);
+  assert.match(found[0]!.message, /classified symbols drifted/);
+});
+
 for (const [file, target, symbol] of [
   ['request-recording-health', 'apple-resources', 'inspectAppleRunnerSession'],
   ['session-device-resolution', 'apple-resources', 'inspectAppleRunnerSession'],

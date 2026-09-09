@@ -167,22 +167,21 @@ export const DAEMON_PLATFORM_RUNTIME_EDGES: readonly DaemonPlatformRuntimeEdge[]
   {
     file: 'src/daemon/handlers/session-selector-dispatch.ts',
     target: 'src/platform-runtime-open-target.ts',
-    symbols: ['resolveAndroidPackageForOpen', 'resolveSessionAppBundleIdForTarget'],
-    classification: 'leaked-platform-mechanics',
+    symbols: ['resolveSessionAppBundleIdForTarget'],
+    classification: 'daemon-policy-essential',
     rationale:
-      'selector dispatch consumes the mixed open-target module; Android package resolution ' +
-      'is platform mechanics that should sit behind the Android owning seam.',
-    deepenedBy: '#2334',
+      'selector dispatch derives session identity through the same neutral open-target ' +
+      'resolution used by lifecycle operations; application tools own the selected-family ' +
+      'observations, with Android package lookup behind its package mechanics seam.',
   },
   {
     file: 'src/daemon/session-lifecycle/internal/session-open-prepare.ts',
     target: 'src/platform-runtime-open-target.ts',
     symbols: ['resolveRequestedOpenSurface', 'validateOpenRelaunchTarget'],
-    classification: 'leaked-platform-mechanics',
+    classification: 'daemon-policy-essential',
     rationale:
-      'open-prepare policy consumes the mixed open-target module; the neutral open ' +
-      'plan/result should be separated from the platform mechanics that share the file.',
-    deepenedBy: '#2334',
+      'open preparation consumes surface and relaunch policy only; device observations ' +
+      'are owned by the application tools rather than reconstructed in daemon planning.',
   },
 ] as const;
 
