@@ -1,7 +1,8 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AppError } from '@agent-device/kernel/errors';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { createAndroidApplicationTools } from '../platform-runtime-android-application-tools.ts';
+import * as androidMechanics from '../platform-runtime-android-mechanics.ts';
 
 const activateAndroidTestIme = vi.hoisted(() => vi.fn());
 const restoreAndroidTestIme = vi.hoisted(() => vi.fn());
@@ -9,6 +10,7 @@ const restoreAndroidTestIme = vi.hoisted(() => vi.fn());
 vi.mock('@agent-device/platform-android/mechanics', () => ({
   activateAndroidTestIme,
   restoreAndroidTestIme,
+  inferAndroidPackageAfterOpen: async () => 'com.example.foreground',
   listAndroidAdbSerialsQuick: async () => [],
   restoreOrphanedAndroidTestImeOnDaemonStartup: async () => undefined,
 }));
@@ -26,6 +28,42 @@ const settled = {
   helperServiceComponent: 'pkg/.Service',
   helperPackageName: 'pkg',
 };
+
+describe('android application tools: optional opened package inference', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  test.each([
+    ['a targetless fresh open', undefined, undefined],
+    ['a targetless open with an existing identity', undefined, 'com.example.app'],
+    ['a deep link with an existing identity', 'example://home', 'com.example.app'],
+  ])('%s needs no Android mechanics', async (_name, target, currentAppBundleId) => {
+    const load = vi
+      .spyOn(androidMechanics, 'loadAndroidMechanics')
+      .mockRejectedValue(new Error('Android mechanics unavailable'));
+
+    await expect(
+      createAndroidApplicationTools().inferOpenedAppBundleId(device, target, currentAppBundleId),
+    ).resolves.toBe(currentAppBundleId);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  test('a deep link leaves its package identity unset if Android mechanics cannot load', async () => {
+    const load = vi
+      .spyOn(androidMechanics, 'loadAndroidMechanics')
+      .mockRejectedValue(new Error('Android mechanics unavailable'));
+
+    await expect(
+      createAndroidApplicationTools().inferOpenedAppBundleId(device, 'example://home', undefined),
+    ).resolves.toBeUndefined();
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  test('a deep link adopts the inferred foreground package when mechanics are available', async () => {
+    await expect(
+      createAndroidApplicationTools().inferOpenedAppBundleId(device, 'example://home', undefined),
+    ).resolves.toBe('com.example.foreground');
+  });
+});
 
 describe('android application tools: test IME activation policy', () => {
   // Test IME is default-on for emulators, so an unobtainable helper must not fail the open.

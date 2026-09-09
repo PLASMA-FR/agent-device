@@ -23,8 +23,13 @@ export function createAndroidApplicationTools(): AndroidApplicationTools {
   return Object.freeze({
     resolveOpenTarget: async (device, input) => await resolveAndroidOpenTarget(device, input),
     inferOpenedAppBundleId: async (device, target, currentAppBundleId) => {
-      const { inferAndroidPackageAfterOpen } = await loadAndroidMechanics();
-      return await inferAndroidPackageAfterOpen(device, target, currentAppBundleId);
+      if (currentAppBundleId || !target) return currentAppBundleId;
+      try {
+        const { inferAndroidPackageAfterOpen } = await loadAndroidMechanics();
+        return await inferAndroidPackageAfterOpen(device, target, currentAppBundleId);
+      } catch {
+        return currentAppBundleId;
+      }
     },
     resetFramePerfStats: async (device, appBundleId) => {
       const { resetAndroidFramePerfStats } = await loadAndroidMechanics();
