@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed: `replay export` preserves deep links without `//`, including `tel:` and `mailto:`, as
+  Maestro `openLink` commands in both standalone and app-plus-link `open` actions.
 - Fixed: iOS `--depth` on `snapshot`, `is`, `wait`, `get`, and `find` no longer fails with
   `regular iOS snapshot presentation requires a valid viewport` when the runner plan is pinned or
   deferred to the private AX backend (custom actions, a private AX verdict on the session, or the
