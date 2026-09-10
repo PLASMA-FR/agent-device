@@ -19,11 +19,14 @@ import { waitForRunner, RUNNER_STARTUP_TIMEOUT_MS } from './runner-startup-trans
 import { sendRunnerCommandOnce } from './runner-transport.ts';
 import {
   acquireXcodebuildSimulatorSetRedirect,
+  createRunnerPhaseBudget,
   ensureXctestrunArtifact,
   IOS_RUNNER_CONTAINER_BUNDLE_IDS,
   prepareXctestrunWithEnv,
+  requireRunnerPhaseRemainingMs,
   resolveExpectedRunnerCacheMetadata,
   resolveRunnerDerivedPath,
+  type RunnerPhaseBudget,
 } from './runner-xctestrun.ts';
 import {
   resolveRunnerRequestSignal,
@@ -109,16 +112,27 @@ export async function ensureRunnerSession(
   // from a retained-after-close runner no longer applies.
   cancelIosRunnerIdleStop(device.id);
   return await withRunnerSessionLock(device.id, async () => {
+    // One budget for the whole startup phase, opened here from the request-level
+    // `startupTimeoutMs`: the reuse check's toolchain probes, adoption and the startup
+    // itself all spend this one clock. The request's abort signal rides with it, so a
+    // client disconnect kills the blocking xctestrun build and runner launch
+    // (killProcessTree via exec) instead of orphaning them. Request-scoped: only this
+    // request's device startup reacts, and a signal-less internal caller (shutdown)
+    // simply gets undefined.
+    const startupBudget = createRunnerPhaseBudget(
+      options.startupTimeoutMs,
+      resolveRunnerRequestSignal(options),
+    );
     const existing = runnerSessions.get(device.id);
     if (existing) {
       assertExpectedRunnerSession(existing, options.expectedRunnerSessionId);
-      const reusable = await resolveReusableRunnerSession(device, existing);
+      const reusable = await resolveReusableRunnerSession(device, existing, startupBudget);
       if (reusable) return reusable;
     }
 
     return await withRunnerLeaseLock(
       device.id,
-      async () => await startRunnerSessionWithLease(device, options),
+      async () => await startRunnerSessionWithLease(device, options, startupBudget),
     );
   });
 }
@@ -126,13 +140,10 @@ export async function ensureRunnerSession(
 async function startRunnerSessionWithLease(
   device: DeviceInfo,
   options: RunnerSessionOptions,
+  startupBudget: RunnerPhaseBudget,
 ): Promise<RunnerSession> {
   const startupTimings: Record<string, number> = {};
-  // The owning request's abort signal so a client disconnect kills the blocking
-  // xctestrun build and runner launch (killProcessTree via exec) instead of
-  // orphaning them. Request-scoped: only this request's device startup reacts,
-  // and a signal-less internal caller (shutdown) simply gets undefined.
-  const signal = resolveRunnerRequestSignal(options);
+  const signal = startupBudget.signal;
   const logicalLeaseContext = normalizeRunnerLogicalLeaseContext(
     options.runnerLeaseContext,
     device.id,
@@ -150,7 +161,7 @@ async function startRunnerSessionWithLease(
     'adopt_detached_runner',
     async () =>
       await tryAdoptRunnerSessionFromLease(device, {
-        startupTimeoutMs: options.startupTimeoutMs,
+        budget: startupBudget,
         expectedRunnerSessionId: options.expectedRunnerSessionId,
       }),
   );
@@ -181,10 +192,16 @@ async function startRunnerSessionWithLease(
       phase: 'ios_runner_startup_cleanup_stale_bundles_skipped',
     });
   }
+  // Read before the build, which is a phase of its own with its own budget (#2422).
+  const startupTimeoutMs = requireRunnerPhaseRemainingMs(startupBudget, 'runner_session_startup');
   const xctestrunArtifact = await measureRunnerStartupStep(
     startupTimings,
     'ensure_xctestrun',
-    async () => await ensureXctestrunArtifact(device, { ...options, signal }),
+    async () =>
+      await ensureXctestrunArtifact(device, {
+        ...options,
+        budget: createRunnerPhaseBudget(options.buildTimeoutMs, signal),
+      }),
   );
   startupTimings.build_xctestrun = xctestrunArtifact.buildMs;
   const port = await measureRunnerStartupStep(
@@ -254,7 +271,7 @@ async function startRunnerSessionWithLease(
     child: runnerProcess.child,
     ready: false,
     startupRetryWake: runnerProcess.startupRetryWake,
-    startupTimeoutMs: normalizeRunnerStartupTimeoutMs(options.startupTimeoutMs),
+    startupTimeoutMs: normalizeRunnerStartupTimeoutMs(startupTimeoutMs),
     startupTimings,
     logicalLeaseContext,
     simulatorSetRedirect: simulatorSetRedirect ?? undefined,
@@ -307,6 +324,7 @@ function runnerSessionOwnershipChanged(): AppError {
 async function resolveReusableRunnerSession(
   device: DeviceInfo,
   existing: RunnerSession,
+  startupBudget: RunnerPhaseBudget,
 ): Promise<RunnerSession | null> {
   if (!isRunnerProcessAlive(existing.child.pid)) {
     await measureRunnerStartupStep({}, 'stop_stale_session', async () => {
@@ -336,7 +354,7 @@ async function resolveReusableRunnerSession(
 
   const expectedDerived = resolveRunnerDerivedPath(
     device,
-    resolveExpectedRunnerCacheMetadata(device),
+    resolveExpectedRunnerCacheMetadata(device, undefined, startupBudget),
   );
   if (existingArtifact?.derived !== expectedDerived) {
     emitDiagnostic({

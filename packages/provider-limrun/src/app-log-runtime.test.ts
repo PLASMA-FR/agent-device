@@ -358,6 +358,14 @@ test('fails closed for a stale Android identity before exposing facts or binding
   expect(facts.operations.captureScreenshot).toMatchObject({ available: false });
   expect(facts.operations.focusPoint).toMatchObject({ available: false });
   expect(facts.operations.typeText).toMatchObject({ available: false });
+  // Every keyboard operation shares the session gap, not a leaf's own refusal.
+  for (const operation of ['keyboardStatus', 'keyboardDismiss', 'keyboardEnter'] as const) {
+    expect(facts.operations[operation]).toMatchObject({
+      available: false,
+      reason: 'owner-capability-missing',
+      hint: 'Limrun requires a matching live provider session for this device.',
+    });
+  }
   await expect(
     owner.bind({ device: staleDevice, intent: { kind: 'ordinary' }, scope }),
   ).rejects.toMatchObject({
@@ -473,11 +481,16 @@ test('closes every Limrun gesture and scroll cell without a live session', async
   const facts = await owner.inspectFacts(limrunAndroid);
   for (const operation of [
     'performGesturePlan',
+    'performDirectionalFlingPlan',
     'performMultiTouchGesturePlan',
     'performTargetAuthoredDrag',
     'gestureViewport',
     'scrollDirection',
   ] as const) {
-    expect(facts.operations[operation].available).toBe(false);
+    expect(facts.operations[operation]).toMatchObject({
+      available: false,
+      reason: 'owner-capability-missing',
+      hint: 'Limrun requires a matching live provider session for this device.',
+    });
   }
 });

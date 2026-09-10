@@ -399,11 +399,8 @@ function webRuntimeFacts(
       // outright. Drag is the exception it checked FIRST, by naming the phases an adapter needs.
       ...scrollRuntimeOperationFacts({ scroll: browserDevice }),
       ...gestureRuntimeOperationFacts({
-        plan: gestureUnavailable,
-        directionalFling: gestureUnavailable,
-        multiTouch: gestureUnavailable,
+        unsupported: gestureUnavailable,
         targetAuthoredDrag: targetAuthoredDragUnavailable,
-        viewport: gestureUnavailable,
       }),
       ...viewportRuntimeOperationFacts({ setViewport: browserDevice }),
       // The web backend has no point-addressed read: `get` answers from the captured DOM tree,
@@ -413,17 +410,10 @@ function webRuntimeFacts(
       ...homeRuntimeOperationFacts({ home: navigationUnavailable }),
       ...orientationRuntimeOperationFacts({ orientation: navigationUnavailable }),
       ...tvRemoteRuntimeOperationFacts({ tvRemote: navigationUnavailable }),
-      ...keyboardRuntimeOperationFacts({
-        status: navigationUnavailable,
-        dismiss: navigationUnavailable,
-        enter: navigationUnavailable,
-      }),
+      ...keyboardRuntimeOperationFacts({ unsupported: navigationUnavailable }),
       // The web backend never carried a `clipboard` capability bucket (`WEB_QUERY_COMMANDS`
       // lists `audio` alone), so no clipboard cell was ever admitted here.
-      ...clipboardRuntimeOperationFacts({
-        read: navigationUnavailable,
-        write: navigationUnavailable,
-      }),
+      ...clipboardRuntimeOperationFacts({ unsupported: navigationUnavailable }),
       // Parity with the retired `WEB_QUERY_COMMANDS` graft, which admitted `audio` on every web
       // device; the provider that carries no probe transport still refuses at execution.
       ...audioProbeRuntimeOperationFacts({ capture: audioCaptureUnavailable, query: available }),

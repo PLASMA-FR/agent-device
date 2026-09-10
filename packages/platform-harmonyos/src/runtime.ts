@@ -252,6 +252,7 @@ export function createHarmonyPlatformRuntime(host: PlatformRuntimeHost): Platfor
         // Gestures share focus's HDC-driven kind cell; only the two tiers HDC cannot synthesize
         // are refused.
         ...gestureRuntimeOperationFacts({
+          unsupported: gestureKindUnavailable,
           plan: harmonyGestureFact(device),
           directionalFling: harmonyGestureFact(device),
           multiTouch: multiTouchUnavailable,
@@ -287,16 +288,15 @@ export function createHarmonyPlatformRuntime(host: PlatformRuntimeHost): Platfor
         }),
         ...orientationRuntimeOperationFacts({ orientation: harmonyPlatformLeafUnavailable }),
         ...tvRemoteRuntimeOperationFacts({ tvRemote: harmonyPlatformLeafUnavailable }),
+        // HDC drives dismissal and the enter key; any other keyboard operation is a leaf gap.
         ...keyboardRuntimeOperationFacts({
+          unsupported: harmonyPlatformLeafUnavailable,
           status: harmonyKeyboardStatusUnavailable,
           dismiss: harmonyFocusFact(device),
           enter: harmonyFocusFact(device),
         }),
         // HarmonyOS exposes no clipboard automation operation.
-        ...clipboardRuntimeOperationFacts({
-          read: harmonyPlatformLeafUnavailable,
-          write: harmonyPlatformLeafUnavailable,
-        }),
+        ...clipboardRuntimeOperationFacts({ unsupported: harmonyPlatformLeafUnavailable }),
         ...audioProbeRuntimeOperationFacts({
           capture: audioProbeUnavailable,
           query: audioProbeUnavailable,

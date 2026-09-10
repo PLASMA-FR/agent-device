@@ -54,6 +54,16 @@ const iosGestureUnavailable = Object.freeze({
   reason: 'unsupported-provider-mode',
   hint: 'Limrun iOS direct sessions do not expose portable gesture execution yet.',
 } as const);
+/** What an unnamed gesture tier reports on a live Limrun session. */
+const gestureUnsupportedProviderMode = Object.freeze({
+  available: false,
+  reason: 'unsupported-provider-mode',
+} as const);
+/** What an unnamed clipboard half reports on a live Limrun session. */
+const clipboardUnsupportedProviderMode = Object.freeze({
+  available: false,
+  reason: 'unsupported-provider-mode',
+} as const);
 const androidTvMultiTouchUnavailable = Object.freeze({
   available: false,
   reason: 'unsupported-platform-leaf',
@@ -74,26 +84,15 @@ function limrunGestureFacts(
   device: DeviceInfo,
   cell: RuntimeOperationUnavailability | typeof available,
 ): GestureRuntimeOperationFacts {
-  if (cell !== available) {
-    return gestureRuntimeOperationFacts({
-      plan: cell,
-      directionalFling: cell,
-      multiTouch: cell,
-      targetAuthoredDrag: cell,
-      viewport: cell,
-    });
+  if (!cell.available) {
+    return gestureRuntimeOperationFacts({ unsupported: cell });
   }
   if (device.platform !== 'android') {
-    return gestureRuntimeOperationFacts({
-      plan: iosGestureUnavailable,
-      directionalFling: iosGestureUnavailable,
-      multiTouch: iosGestureUnavailable,
-      targetAuthoredDrag: iosGestureUnavailable,
-      viewport: iosGestureUnavailable,
-    });
+    return gestureRuntimeOperationFacts({ unsupported: iosGestureUnavailable });
   }
   const tv = device.target === 'tv';
   return gestureRuntimeOperationFacts({
+    unsupported: gestureUnsupportedProviderMode,
     plan: available,
     directionalFling: available,
     multiTouch: tv ? androidTvMultiTouchUnavailable : available,
@@ -273,9 +272,23 @@ export function limrunClipboardOperationFacts(
   device: DeviceInfo,
   liveSessionUnavailable?: RuntimeOperationUnavailability,
 ) {
-  const cell =
-    liveSessionUnavailable ?? (device.platform === 'android' ? available : clipboardUnavailableIos);
-  return Object.freeze({ ...clipboardRuntimeOperationFacts({ read: cell, write: cell }) });
+  if (liveSessionUnavailable) {
+    return Object.freeze({
+      ...clipboardRuntimeOperationFacts({ unsupported: liveSessionUnavailable }),
+    });
+  }
+  if (device.platform !== 'android') {
+    return Object.freeze({
+      ...clipboardRuntimeOperationFacts({ unsupported: clipboardUnavailableIos }),
+    });
+  }
+  return Object.freeze({
+    ...clipboardRuntimeOperationFacts({
+      unsupported: clipboardUnsupportedProviderMode,
+      read: available,
+      write: available,
+    }),
+  });
 }
 
 const alertUnavailableIos = Object.freeze({
@@ -347,9 +360,16 @@ export function limrunKeyboardOperationFacts(
   device: DeviceInfo,
   liveSessionUnavailable?: RuntimeOperationUnavailability,
 ) {
-  const cell =
-    liveSessionUnavailable ?? (device.platform === 'android' ? available : keyboardUnavailableIos);
+  // One denial covers the iOS leg and any session that is no longer live: neither serves a
+  // keyboard operation.
+  const unsupported = liveSessionUnavailable ?? keyboardUnavailableIos;
+  const androidLegServesKeyboard =
+    liveSessionUnavailable === undefined && device.platform === 'android';
   return Object.freeze({
-    ...keyboardRuntimeOperationFacts({ status: cell, dismiss: cell, enter: cell }),
+    ...keyboardRuntimeOperationFacts(
+      androidLegServesKeyboard
+        ? { unsupported, status: available, dismiss: available, enter: available }
+        : { unsupported },
+    ),
   });
 }
