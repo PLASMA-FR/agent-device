@@ -87,7 +87,9 @@ test('runtime snapshot recognizes equivalent bounds and still updates its baseli
   let rect = { x: 10, y: 20, width: 100, height: 40 };
   const device = createAgentDevice({
     backend: createSnapshotBackend(() => ({
-      snapshot: makeSnapshotState([{ index: 0, depth: 0, type: 'Button', label: 'Save', rect }]),
+      snapshot: makeSnapshotState([{ index: 0, depth: 0, type: 'Button', label: 'Save', rect }], {
+        comparisonSafe: true,
+      }),
     })),
     artifacts: createLocalArtifactAdapter(),
     sessions: {
